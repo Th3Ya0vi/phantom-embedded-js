@@ -52,13 +52,13 @@ Edit the `.env` file and add your Phantom App ID:
 # Your App ID from Phantom Portal (REQUIRED)
 VITE_PHANTOM_APP_ID=your-app-id-here
 
-# Phantom Connect Auth URL (optional - defaults to https://connect.phantom.app)
+# Phantom Connect Auth URL (REQUIRED)
 VITE_PHANTOM_AUTH_URL=https://connect.phantom.app
 
 # Authentication Redirect URL (must be whitelisted in Phantom Portal)
 VITE_REDIRECT_URL=http://localhost:5173/
 
-# Solana RPC Endpoint (optional - defaults to mainnet)
+# Solana RPC Endpoint (REQUIRED)
 VITE_SOLANA_RPC_URL=https://api.mainnet-beta.solana.com
 ```
 
@@ -140,8 +140,8 @@ Customize colors and theme in `src/styles.css`:
 |----------|----------|---------|-------------|
 | `VITE_PHANTOM_APP_ID` | Yes | - | App ID from Phantom Portal |
 | `VITE_REDIRECT_URL` | Yes | - | OAuth redirect URL (must be whitelisted in Phantom Portal) |
-| `VITE_PHANTOM_AUTH_URL` | No | `https://connect.phantom.app` | Phantom Connect URL |
-| `VITE_SOLANA_RPC_URL` | No | `https://api.mainnet-beta.solana.com` | Solana RPC endpoint (defaults to mainnet) |
+| `VITE_PHANTOM_AUTH_URL` | Yes | `https://connect.phantom.app` | Phantom Connect URL |
+| `VITE_SOLANA_RPC_URL` | Yes | `https://api.mainnet-beta.solana.com` | Solana RPC endpoint |
 
 ## Troubleshooting
 
