@@ -1,4 +1,11 @@
 import { BrowserSDK, AddressType, ConnectResult, WalletAddress } from '@phantom/browser-sdk';
+import {
+  Transaction,
+  SystemProgram,
+  PublicKey,
+  LAMPORTS_PER_SOL,
+  Connection,
+} from '@solana/web3.js';
 
 let sdk: BrowserSDK | null = null;
 let connectedAddress: string | null = null;
@@ -20,12 +27,10 @@ export function initializeSDK(): BrowserSDK {
   }
 
   sdk = new BrowserSDK({
-    providerType: "embedded",
-    embeddedWalletType: "user-wallet",
+    providers: ["google", "apple"],
     addressTypes: [AddressType.solana],
     appId: appId,
     authOptions: {
-      authUrl: `${authUrl}/login`,
       redirectUrl: redirectUrl,
     }
   });
@@ -250,5 +255,30 @@ export async function handleAuthCallback(): Promise<string | null> {
     window.history.replaceState({}, document.title, window.location.pathname);
     return null;
   }
+}
+
+// Send SOL demo — signs and sends a self-transfer of 0.001 SOL
+export async function sendSOL(toAddress?: string): Promise<string> {
+  const sdkInstance = getSDK();
+  if (!connectedAddress) throw new Error('Not connected');
+
+  const connection = new Connection('https://api.mainnet-beta.solana.com');
+  const { blockhash } = await connection.getLatestBlockhash();
+  const from = new PublicKey(connectedAddress);
+  const to = new PublicKey(toAddress ?? connectedAddress); // self-transfer as demo
+
+  const transaction = new Transaction({
+    recentBlockhash: blockhash,
+    feePayer: from,
+  }).add(
+    SystemProgram.transfer({
+      fromPubkey: from,
+      toPubkey: to,
+      lamports: 0.001 * LAMPORTS_PER_SOL,
+    })
+  );
+
+  const result = await sdkInstance.solana.signAndSendTransaction(transaction);
+  return result.hash;
 }
 

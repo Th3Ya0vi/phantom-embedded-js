@@ -4,6 +4,7 @@ import {
   disconnect,
   getAddress,
   checkExistingSession,
+  sendSOL,
 } from './phantom';
 
 import { initializeConnection, getBalance } from './solana';
@@ -112,6 +113,10 @@ function setupEventListeners(): void {
   getCopyButton().addEventListener('click', handleCopyClick);
   getRefreshButton().addEventListener('click', handleRefreshBalance);
 
+  // Transaction demo
+  const sendSolBtn = document.getElementById('send-sol-btn');
+  if (sendSolBtn) sendSolBtn.addEventListener('click', handleSendSOL);
+
   // Theme toggle
   const themeToggle = document.getElementById('theme-toggle');
   if (themeToggle) {
@@ -216,6 +221,30 @@ async function handleRefreshBalance(): Promise<void> {
       : 'Refresh failed. Please try again.';
     
     showError(errorMessage);
+  }
+}
+
+// Handle Send SOL demo button
+async function handleSendSOL(): Promise<void> {
+  const btn = document.getElementById('send-sol-btn') as HTMLButtonElement;
+  const result = document.getElementById('tx-result');
+  if (!btn || !result) return;
+
+  btn.disabled = true;
+  btn.textContent = 'Sending...';
+  result.classList.add('hidden');
+
+  try {
+    const hash = await sendSOL();
+    result.textContent = `✓ Sent! Tx: ${hash.slice(0, 16)}...`;
+    result.classList.remove('hidden');
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : 'Transaction failed';
+    result.textContent = `✗ ${msg}`;
+    result.classList.remove('hidden');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Send SOL (Demo)';
   }
 }
 
