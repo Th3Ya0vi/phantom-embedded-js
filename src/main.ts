@@ -3,11 +3,17 @@ import {
   connect,
   disconnect,
   getAddress,
-  checkExistingSession,
-  sendSOL,
+  isConnected,
+  signMessage,
+  signAndSendTransaction,
 } from './phantom';
 
-import { initializeConnection, getBalance } from './solana';
+import { 
+  initializeConnection, 
+  getBalance, 
+  isValidSolanaAddress,
+  getExplorerUrl,
+} from './solana';
 
 import {
   initializeUI,
@@ -22,12 +28,29 @@ import {
   clearBalanceLoading,
   getConnectGoogleButton,
   getConnectAppleButton,
+  getConnectExtensionButton,
   getDisconnectButton,
   getCopyButton,
   getRefreshButton,
+  getSignMessageButton,
+  getSendSolButton,
   handleCopyAddress,
   resetUI,
+  showSignatureResult,
+  clearSignatureResult,
+  showTransactionResult,
+  clearTransactionResult,
+  getMessageInput,
+  getRecipientInput,
+  getAmountInput,
 } from './ui';
+
+import { 
+  Transaction, 
+  SystemProgram, 
+  PublicKey, 
+  LAMPORTS_PER_SOL 
+} from '@solana/web3.js';
 
 // App state
 let currentAddress: string | null = null;
@@ -76,22 +99,36 @@ async function initializeApp(): Promise<void> {
     initializeConnection();
     setupEventListeners();
 
-    // Show loading while checking/processing authentication
+    // Show loading while checking for existing session
     showLoading('Loading...');
 
-    // Check for existing session (includes handling OAuth callback if present)
-    const existingAddress = await checkExistingSession();
-    
-    if (existingAddress) {
-      // Session found - load dashboard
-      currentAddress = existingAddress;
-      await loadAccountData();
-      hideLoading();
-      console.log('App initialized - session active');
-      return;
+    // Check if SDK has an existing session
+    if (isConnected()) {
+      console.log('Existing session detected');
+      
+      // Try to retrieve addresses using the 'phantom' provider for existing sessions
+      try {
+        const address = await connect('google');
+        if (address) {
+          currentAddress = address;
+          await loadAccountData();
+          hideLoading();
+          console.log('App initialized - session restored');
+          return;
+        }
+      } catch (err) {
+        console.log('Session retrieval needed manual connect:', err);
+      }
     }
     
-    // No session, show login view
+    // Clean URL if there are OAuth callback params
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.has('response_type') || urlParams.has('wallet_id') || 
+        urlParams.has('code') || urlParams.has('state')) {
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+    
+    // No session - show login view
     hideLoading();
     showConnectView();
     console.log('App initialized - no session');
@@ -108,14 +145,27 @@ function setupEventListeners(): void {
   getConnectGoogleButton().addEventListener('click', () => handleConnect('google'));
   getConnectAppleButton().addEventListener('click', () => handleConnect('apple'));
   
+  // Extension/injected wallet button (optional, may not exist)
+  const extensionBtn = getConnectExtensionButton();
+  if (extensionBtn) {
+    extensionBtn.addEventListener('click', () => handleConnect('injected'));
+  }
+  
   // Account actions
   getDisconnectButton().addEventListener('click', handleDisconnect);
   getCopyButton().addEventListener('click', handleCopyClick);
   getRefreshButton().addEventListener('click', handleRefreshBalance);
 
-  // Transaction demo
-  const sendSolBtn = document.getElementById('send-sol-btn');
-  if (sendSolBtn) sendSolBtn.addEventListener('click', handleSendSOL);
+  // New feature buttons
+  const signMsgBtn = getSignMessageButton();
+  if (signMsgBtn) {
+    signMsgBtn.addEventListener('click', handleSignMessage);
+  }
+  
+  const sendSolBtn = getSendSolButton();
+  if (sendSolBtn) {
+    sendSolBtn.addEventListener('click', handleSendSol);
+  }
 
   // Theme toggle
   const themeToggle = document.getElementById('theme-toggle');
@@ -125,14 +175,14 @@ function setupEventListeners(): void {
 }
 
 // Handle social login button clicks
-async function handleConnect(provider: 'google' | 'apple'): Promise<void> {
+async function handleConnect(provider: 'google' | 'apple' | 'injected' | 'deeplink'): Promise<void> {
   try {
     hideError();
-    const providerName = provider.charAt(0).toUpperCase() + provider.slice(1);
+    const providerName = provider === 'injected' ? 'Extension' : provider.charAt(0).toUpperCase() + provider.slice(1);
     showLoading(`Connecting with ${providerName}...`);
 
-    // Trigger OAuth flow with selected provider
-    // Note: This will redirect user to OAuth provider for authentication
+    // Trigger connection with selected provider
+    // For OAuth providers, this will redirect the user
     const address = await connect(provider);
 
     if (!address) {
@@ -144,16 +194,6 @@ async function handleConnect(provider: 'google' | 'apple'): Promise<void> {
     await loadAccountData();
   } catch (error) {
     console.error('Connection error:', error);
-    
-    // Don't show error if this is a redirect (expected OAuth flow behavior)
-    // The user is being redirected to authenticate and will return to the app
-    if (error instanceof Error && error.message === 'REDIRECT_IN_PROGRESS') {
-      console.log('Redirecting to OAuth provider...');
-      // Keep loading state active during redirect
-      return;
-    }
-    
-    // Only show errors for actual failures
     hideLoading();
     
     const errorMessage = error instanceof Error 
@@ -224,27 +264,112 @@ async function handleRefreshBalance(): Promise<void> {
   }
 }
 
-// Handle Send SOL demo button
-async function handleSendSOL(): Promise<void> {
-  const btn = document.getElementById('send-sol-btn') as HTMLButtonElement;
-  const result = document.getElementById('tx-result');
-  if (!btn || !result) return;
-
-  btn.disabled = true;
-  btn.textContent = 'Sending...';
-  result.classList.add('hidden');
-
+// Handle sign message button click
+async function handleSignMessage(): Promise<void> {
   try {
-    const hash = await sendSOL();
-    result.textContent = `✓ Sent! Tx: ${hash.slice(0, 16)}...`;
-    result.classList.remove('hidden');
+    hideError();
+    clearSignatureResult();
+    
+    const messageInput = getMessageInput();
+    const message = messageInput?.value?.trim();
+    
+    if (!message) {
+      showError('Please enter a message to sign');
+      return;
+    }
+    
+    showLoading('Signing message...');
+    
+    const result = await signMessage(message);
+    
+    hideLoading();
+    showSignatureResult(result.signature);
   } catch (error) {
-    const msg = error instanceof Error ? error.message : 'Transaction failed';
-    result.textContent = `✗ ${msg}`;
-    result.classList.remove('hidden');
-  } finally {
-    btn.disabled = false;
-    btn.textContent = 'Send SOL (Demo)';
+    console.error('Sign message error:', error);
+    hideLoading();
+    
+    const errorMessage = error instanceof Error 
+      ? error.message 
+      : 'Failed to sign message. Please try again.';
+    
+    showError(errorMessage);
+  }
+}
+
+// Handle send SOL button click
+async function handleSendSol(): Promise<void> {
+  try {
+    hideError();
+    clearTransactionResult();
+    
+    const recipientInput = getRecipientInput();
+    const amountInput = getAmountInput();
+    
+    const recipient = recipientInput?.value?.trim();
+    const amountStr = amountInput?.value?.trim();
+    
+    // Validate inputs
+    if (!recipient) {
+      showError('Please enter a recipient address');
+      return;
+    }
+    
+    if (!isValidSolanaAddress(recipient)) {
+      showError('Invalid Solana address');
+      return;
+    }
+    
+    if (!amountStr) {
+      showError('Please enter an amount');
+      return;
+    }
+    
+    const amount = parseFloat(amountStr);
+    if (isNaN(amount) || amount <= 0) {
+      showError('Please enter a valid amount');
+      return;
+    }
+    
+    if (!currentAddress) {
+      showError('No connected account');
+      return;
+    }
+    
+    showLoading('Sending transaction...');
+    
+    // Create transfer transaction
+    const transaction = new Transaction().add(
+      SystemProgram.transfer({
+        fromPubkey: new PublicKey(currentAddress),
+        toPubkey: new PublicKey(recipient),
+        lamports: Math.floor(amount * LAMPORTS_PER_SOL),
+      })
+    );
+    
+    // Sign and send using SDK
+    const result = await signAndSendTransaction(transaction);
+    
+    hideLoading();
+    
+    // Show transaction result with explorer link
+    const explorerUrl = getExplorerUrl(result.signature, 'mainnet-beta');
+    showTransactionResult(result.signature, explorerUrl);
+    
+    // Refresh balance after transaction
+    await fetchAndDisplayBalance(currentAddress);
+    
+    // Clear inputs
+    if (recipientInput) recipientInput.value = '';
+    if (amountInput) amountInput.value = '';
+  } catch (error) {
+    console.error('Send SOL error:', error);
+    hideLoading();
+    
+    const errorMessage = error instanceof Error 
+      ? error.message 
+      : 'Transaction failed. Please try again.';
+    
+    showError(errorMessage);
   }
 }
 
@@ -279,7 +404,7 @@ async function loadAccountData(): Promise<void> {
 async function fetchAndDisplayBalance(address: string): Promise<void> {
   try {
     setBalanceLoading();
-    // Query Solana RPC for balance (SDK doesn't provide this)
+    // Query Solana RPC for balance
     const balance = await getBalance(address);
     updateBalance(balance);
     clearBalanceLoading();
@@ -318,4 +443,3 @@ if (document.readyState === 'loading') {
 } else {
   initializeApp();
 }
-

@@ -5,6 +5,7 @@ let connectSection: HTMLElement;
 let accountSection: HTMLElement;
 let connectGoogleBtn: HTMLButtonElement;
 let connectAppleBtn: HTMLButtonElement;
+let connectExtensionBtn: HTMLButtonElement | null;
 let disconnectBtn: HTMLButtonElement;
 let copyBtn: HTMLButtonElement;
 let refreshBtn: HTMLButtonElement;
@@ -13,6 +14,15 @@ let balanceDisplay: HTMLElement;
 let errorMessage: HTMLElement;
 let loadingOverlay: HTMLElement;
 
+// New feature elements
+let signMessageBtn: HTMLButtonElement | null;
+let messageInput: HTMLInputElement | null;
+let signatureResult: HTMLElement | null;
+let sendSolBtn: HTMLButtonElement | null;
+let recipientInput: HTMLInputElement | null;
+let amountInput: HTMLInputElement | null;
+let transactionResult: HTMLElement | null;
+
 // Initialize and cache DOM element references
 export function initializeUI(): void {
   // Get all required DOM elements by ID
@@ -20,6 +30,7 @@ export function initializeUI(): void {
   accountSection = document.getElementById('account-section') as HTMLElement;
   connectGoogleBtn = document.getElementById('connect-google-btn') as HTMLButtonElement;
   connectAppleBtn = document.getElementById('connect-apple-btn') as HTMLButtonElement;
+  connectExtensionBtn = document.getElementById('connect-extension-btn') as HTMLButtonElement | null;
   disconnectBtn = document.getElementById('disconnect-btn') as HTMLButtonElement;
   copyBtn = document.getElementById('copy-btn') as HTMLButtonElement;
   refreshBtn = document.getElementById('refresh-btn') as HTMLButtonElement;
@@ -28,7 +39,16 @@ export function initializeUI(): void {
   errorMessage = document.getElementById('error-message') as HTMLElement;
   loadingOverlay = document.getElementById('loading-overlay') as HTMLElement;
 
-  // Validate all elements exist
+  // New feature elements (optional, may not exist)
+  signMessageBtn = document.getElementById('sign-message-btn') as HTMLButtonElement | null;
+  messageInput = document.getElementById('message-input') as HTMLInputElement | null;
+  signatureResult = document.getElementById('signature-result') as HTMLElement | null;
+  sendSolBtn = document.getElementById('send-sol-btn') as HTMLButtonElement | null;
+  recipientInput = document.getElementById('recipient-input') as HTMLInputElement | null;
+  amountInput = document.getElementById('amount-input') as HTMLInputElement | null;
+  transactionResult = document.getElementById('transaction-result') as HTMLElement | null;
+
+  // Validate core elements exist
   if (!connectSection || !accountSection || !connectGoogleBtn || !connectAppleBtn || 
       !disconnectBtn || !copyBtn || !refreshBtn || !addressDisplay || 
       !balanceDisplay || !errorMessage || !loadingOverlay) {
@@ -61,6 +81,10 @@ export function showAccountView(address: string, balance?: number): void {
   } else {
     balanceDisplay.textContent = 'Loading...';
   }
+  
+  // Clear any previous results
+  clearSignatureResult();
+  clearTransactionResult();
   
   hideError();
 }
@@ -117,6 +141,10 @@ export function getConnectAppleButton(): HTMLButtonElement {
   return connectAppleBtn;
 }
 
+export function getConnectExtensionButton(): HTMLButtonElement | null {
+  return connectExtensionBtn;
+}
+
 export function getDisconnectButton(): HTMLButtonElement {
   return disconnectBtn;
 }
@@ -127,6 +155,28 @@ export function getCopyButton(): HTMLButtonElement {
 
 export function getRefreshButton(): HTMLButtonElement {
   return refreshBtn;
+}
+
+// New feature button getters
+export function getSignMessageButton(): HTMLButtonElement | null {
+  return signMessageBtn;
+}
+
+export function getSendSolButton(): HTMLButtonElement | null {
+  return sendSolBtn;
+}
+
+// Input element getters
+export function getMessageInput(): HTMLInputElement | null {
+  return messageInput;
+}
+
+export function getRecipientInput(): HTMLInputElement | null {
+  return recipientInput;
+}
+
+export function getAmountInput(): HTMLInputElement | null {
+  return amountInput;
 }
 
 // Copy address to clipboard with visual feedback
@@ -149,12 +199,91 @@ export async function handleCopyAddress(address: string): Promise<void> {
   }
 }
 
+// Show signature result
+export function showSignatureResult(signature: string): void {
+  if (signatureResult) {
+    // Truncate signature for display
+    const truncated = signature.length > 20 
+      ? `${signature.slice(0, 10)}...${signature.slice(-10)}`
+      : signature;
+    
+    signatureResult.innerHTML = `
+      <div class="result-content">
+        <span class="result-label">Signature:</span>
+        <span class="result-value" title="${signature}">${truncated}</span>
+        <button class="copy-signature-btn icon-btn" data-signature="${signature}">Copy</button>
+      </div>
+    `;
+    signatureResult.classList.remove('hidden');
+    
+    // Add copy handler
+    const copySignatureBtn = signatureResult.querySelector('.copy-signature-btn');
+    if (copySignatureBtn) {
+      copySignatureBtn.addEventListener('click', async () => {
+        try {
+          await copyToClipboard(signature);
+          copySignatureBtn.textContent = 'Copied!';
+          setTimeout(() => {
+            copySignatureBtn.textContent = 'Copy';
+          }, 2000);
+        } catch (err) {
+          showError('Failed to copy signature');
+        }
+      });
+    }
+  }
+}
+
+// Clear signature result
+export function clearSignatureResult(): void {
+  if (signatureResult) {
+    signatureResult.innerHTML = '';
+    signatureResult.classList.add('hidden');
+  }
+}
+
+// Show transaction result with explorer link
+export function showTransactionResult(hash: string, explorerUrl: string): void {
+  if (transactionResult) {
+    // Truncate hash for display
+    const truncated = hash.length > 20 
+      ? `${hash.slice(0, 10)}...${hash.slice(-10)}`
+      : hash;
+    
+    transactionResult.innerHTML = `
+      <div class="result-content success">
+        <span class="result-label">Transaction sent!</span>
+        <span class="result-value" title="${hash}">${truncated}</span>
+        <a href="${explorerUrl}" target="_blank" rel="noopener noreferrer" class="explorer-link">
+          View on Explorer
+        </a>
+      </div>
+    `;
+    transactionResult.classList.remove('hidden');
+  }
+}
+
+// Clear transaction result
+export function clearTransactionResult(): void {
+  if (transactionResult) {
+    transactionResult.innerHTML = '';
+    transactionResult.classList.add('hidden');
+  }
+}
+
 // Reset UI to initial login state
 export function resetUI(): void {
   showConnectView();
   addressDisplay.textContent = '';
   balanceDisplay.textContent = 'Loading...';
+  clearSignatureResult();
+  clearTransactionResult();
+  
+  // Clear inputs
+  if (messageInput) messageInput.value = '';
+  if (recipientInput) recipientInput.value = '';
+  if (amountInput) amountInput.value = '';
+  
   hideError();
   hideLoading();
 }
-

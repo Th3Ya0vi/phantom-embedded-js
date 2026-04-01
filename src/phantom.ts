@@ -1,20 +1,15 @@
-import { BrowserSDK, AddressType, ConnectResult, WalletAddress } from '@phantom/browser-sdk';
-import {
-  Transaction,
-  SystemProgram,
-  PublicKey,
-  LAMPORTS_PER_SOL,
-  Connection,
-} from '@solana/web3.js';
+import { BrowserSDK, AddressType } from '@phantom/browser-sdk';
 
+// SDK instance singleton
 let sdk: BrowserSDK | null = null;
 let connectedAddress: string | null = null;
 
+// Initialize SDK with new configuration format
 export function initializeSDK(): BrowserSDK {
   const appId = import.meta.env.VITE_PHANTOM_APP_ID;
-  const redirectUrl = import.meta.env.VITE_REDIRECT_URL;
-  const authUrl = import.meta.env.VITE_PHANTOM_AUTH_URL;
+  const redirectUrl = import.meta.env.VITE_REDIRECT_URL || window.location.origin;
 
+  // Validate required configuration
   if (!appId || appId === 'your-app-id-here') {
     throw new Error(
       'Missing Phantom App ID. Set VITE_PHANTOM_APP_ID in .env file. ' +
@@ -22,20 +17,21 @@ export function initializeSDK(): BrowserSDK {
     );
   }
 
-  if (!redirectUrl) {
-    throw new Error('Missing redirect URL. Set VITE_REDIRECT_URL in .env file.');
-  }
-
+  // Create SDK with new providers array configuration
   sdk = new BrowserSDK({
-    providers: ["google", "apple"],
+    // List of allowed authentication providers
+    providers: ['google', 'apple', 'injected', 'deeplink'],
+    // Networks to enable
     addressTypes: [AddressType.solana],
+    // Required for embedded providers (google, apple, deeplink)
     appId: appId,
+    // Auth configuration for OAuth providers
     authOptions: {
       redirectUrl: redirectUrl,
-    }
+    },
   });
 
-  console.log('Phantom SDK initialized');
+  console.log('Phantom SDK initialized with providers: google, apple, injected, deeplink');
   return sdk;
 }
 
@@ -47,43 +43,31 @@ export function getSDK(): BrowserSDK {
   return sdk;
 }
 
-// Trigger Phantom Connect authentication with selected social provider
-export async function connect(provider: 'google' | 'apple' = 'google'): Promise<string> {
+// Connect with specified provider (google, apple, injected, deeplink)
+export async function connect(provider: 'google' | 'apple' | 'injected' | 'deeplink' = 'google'): Promise<string> {
   try {
     const sdkInstance = getSDK();
-    console.log(`Starting authentication with ${provider}...`);
+    console.log(`Starting connection with ${provider}...`);
     
-    // Connect with social provider (triggers OAuth flow)
-    // Note: This will redirect the user to OAuth provider, so the promise
-    // may not resolve in the current page session
-    const result: ConnectResult = await sdkInstance.connect({ provider });
+    // Connect with selected provider
+    const { addresses } = await sdkInstance.connect({ provider });
     
     // Extract Solana address from result
-    if (result?.addresses && Array.isArray(result.addresses)) {
-      const solanaAddr = result.addresses.find((addr: WalletAddress) => 
-        addr.addressType === AddressType.solana
-      );
-      
-      const address = solanaAddr?.address;
-      if (address && typeof address === 'string') {
-        connectedAddress = address;
-        console.log('Connected:', address);
-        return address;
-      }
+    const solanaAddress = addresses?.find(
+      addr => addr.addressType === AddressType.solana
+    );
+    
+    if (solanaAddress?.address) {
+      connectedAddress = solanaAddress.address;
+      console.log('Connected:', connectedAddress);
+      return connectedAddress;
     }
     
-    // During OAuth flow, user gets redirected so no address is returned yet
-    // This is expected behavior, not an error - just throw to be caught
-    throw new Error('REDIRECT_IN_PROGRESS');
+    throw new Error('No Solana address returned from connection');
   } catch (error) {
     console.error('Connection error:', error);
     
-    // If this is a redirect-in-progress (expected OAuth flow), pass it through
-    if (error instanceof Error && error.message === 'REDIRECT_IN_PROGRESS') {
-      throw error;
-    }
-    
-    // For actual errors, provide helpful message
+    // Re-throw with helpful message
     if (error instanceof Error) {
       throw new Error(`Connection failed: ${error.message}`);
     }
@@ -97,16 +81,21 @@ export async function disconnect(): Promise<void> {
     const sdkInstance = getSDK();
     await sdkInstance.disconnect();
     connectedAddress = null;
-    console.log('Logged out');
+    console.log('Disconnected successfully');
   } catch (error) {
-    console.error('Logout failed:', error);
-    throw new Error('Failed to log out. Please try again.');
+    console.error('Disconnect failed:', error);
+    throw new Error('Failed to disconnect. Please try again.');
   }
 }
 
 // Get the cached connected address
 export function getAddress(): string | null {
   return connectedAddress;
+}
+
+// Set address (used during auto-connect)
+export function setAddress(address: string): void {
+  connectedAddress = address;
 }
 
 // Check if user has an active session
@@ -119,166 +108,128 @@ export function isConnected(): boolean {
   }
 }
 
-// Check for existing session on page load (auto-reconnect)
-export async function checkExistingSession(): Promise<string | null> {
+// Helper to convert Uint8Array to hex string
+function uint8ArrayToHex(arr: Uint8Array): string {
+  return Array.from(arr)
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+// Helper to convert Uint8Array to base58 string
+function uint8ArrayToBase58(arr: Uint8Array): string {
+  const ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+  let result = '';
+  let num = BigInt('0x' + uint8ArrayToHex(arr));
+  
+  while (num > 0n) {
+    const remainder = Number(num % 58n);
+    num = num / 58n;
+    result = ALPHABET[remainder] + result;
+  }
+  
+  // Handle leading zeros
+  for (const byte of arr) {
+    if (byte === 0) {
+      result = '1' + result;
+    } else {
+      break;
+    }
+  }
+  
+  return result || '1';
+}
+
+// Sign a message using Solana wallet
+export async function signMessage(message: string): Promise<{ signature: string; rawSignature: string }> {
   try {
     const sdkInstance = getSDK();
     
-    // First check if this is an OAuth callback redirect
-    const urlParams = new URLSearchParams(window.location.search);
-    const isCallback = urlParams.has('response_type') || urlParams.has('wallet_id') ||
-                       urlParams.has('code') || urlParams.has('state');
-    
-    if (isCallback) {
-      console.log('Processing OAuth callback...');
-      
-      // Wait a bit for SDK to initialize the callback
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      // Call connect to complete the OAuth handshake and get session
-      try {
-        const result: ConnectResult = await sdkInstance.connect({ provider: 'phantom' });
-        
-        // Extract Solana address from result
-        if (result?.addresses && Array.isArray(result.addresses)) {
-          const solanaAddr = result.addresses.find((addr: WalletAddress) => 
-            addr.addressType === AddressType.solana
-          );
-          
-          const address = solanaAddr?.address;
-          if (address && typeof address === 'string') {
-            connectedAddress = address;
-            console.log('OAuth callback completed, address:', address);
-            // Clean the URL
-            window.history.replaceState({}, document.title, window.location.pathname);
-            return address;
-          }
-        }
-      } catch (err) {
-        console.error('OAuth callback failed:', err);
-        // Clean URL even on error
-        window.history.replaceState({}, document.title, window.location.pathname);
-        return null;
-      }
-    }
-    
-    // Not a callback - check if SDK reports an existing session
     if (!sdkInstance.isConnected()) {
-      console.log('No active session');
-      return null;
+      throw new Error('Wallet not connected');
     }
     
-    // If connected, retrieve the session data from SDK
-    console.log('Active session detected, retrieving address...');
+    console.log('Signing message...');
+    const result = await sdkInstance.solana.signMessage(message);
+    console.log('Message signed successfully');
     
-    try {
-      const result: ConnectResult = await sdkInstance.connect({ provider: 'phantom' });
-      
-      // Extract Solana address from session
-      if (result?.addresses && Array.isArray(result.addresses)) {
-        const solanaAddr = result.addresses.find((addr: WalletAddress) => 
-          addr.addressType === AddressType.solana
-        );
-        
-        const address = solanaAddr?.address;
-        if (address && typeof address === 'string') {
-          connectedAddress = address;
-          console.log('Session restored:', address);
-          return address;
-        }
-      }
-    } catch (err) {
-      console.error('Failed to retrieve session data:', err);
-    }
+    // Convert Uint8Array signature to base58 string
+    const signatureBase58 = uint8ArrayToBase58(result.signature);
+    const signatureHex = uint8ArrayToHex(result.signature);
     
-    return null;
+    return {
+      signature: signatureBase58,
+      rawSignature: signatureHex,
+    };
   } catch (error) {
-    console.error('Session check failed:', error);
-    return null;
+    console.error('Sign message failed:', error);
+    if (error instanceof Error) {
+      throw new Error(`Failed to sign message: ${error.message}`);
+    }
+    throw new Error('Failed to sign message. Please try again.');
   }
 }
 
-// Handle OAuth callback after Phantom redirects back to app
-export async function handleAuthCallback(): Promise<string | null> {
+// Sign and send a Solana transaction
+export async function signAndSendTransaction(transaction: any): Promise<{ signature: string }> {
   try {
-    // Check for OAuth callback parameters in URL
-    const urlParams = new URLSearchParams(window.location.search);
-    const hasAuthParams = urlParams.has('response_type') || urlParams.has('wallet_id') ||
-                          urlParams.has('code') || urlParams.has('state');
-    
-    if (!hasAuthParams) {
-      return null;
-    }
-    
-    console.log('Processing OAuth callback...');
-    
     const sdkInstance = getSDK();
     
-    // Wait for SDK to process the OAuth callback
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    
-    try {
-      // Retrieve session data without showing UI
-      const result: ConnectResult = await sdkInstance.connect({ provider: 'phantom' });
-      
-      // Extract Solana address from session
-      if (result?.addresses && Array.isArray(result.addresses)) {
-        const solanaAddr = result.addresses.find((addr: WalletAddress) => 
-          addr.addressType === AddressType.solana
-        );
-        
-        const address = solanaAddr?.address;
-        if (address && typeof address === 'string') {
-          connectedAddress = address;
-          console.log('OAuth session established');
-          // Clean URL parameters
-          window.history.replaceState({}, document.title, window.location.pathname);
-          return address;
-        }
-      }
-    } catch (err) {
-      console.log('Session retrieval failed');
+    if (!sdkInstance.isConnected()) {
+      throw new Error('Wallet not connected');
     }
     
-    // Fallback: check if we have cached connection
-    if (isConnected() && connectedAddress) {
-      window.history.replaceState({}, document.title, window.location.pathname);
-      return connectedAddress;
-    }
+    console.log('Signing and sending transaction...');
+    const result = await sdkInstance.solana.signAndSendTransaction(transaction);
+    console.log('Transaction sent:', result.signature);
     
-    // Clean URL even if callback failed
-    window.history.replaceState({}, document.title, window.location.pathname);
-    return null;
-    
+    return { signature: result.signature };
   } catch (error) {
-    console.error('OAuth callback error:', error);
-    window.history.replaceState({}, document.title, window.location.pathname);
+    console.error('Transaction failed:', error);
+    if (error instanceof Error) {
+      throw new Error(`Transaction failed: ${error.message}`);
+    }
+    throw new Error('Transaction failed. Please try again.');
+  }
+}
+
+// Get the Solana public key
+export function getPublicKey(): string | null {
+  try {
+    const sdkInstance = getSDK();
+    if (!sdkInstance.isConnected()) return null;
+    return sdkInstance.solana.publicKey;
+  } catch (error) {
     return null;
   }
 }
 
-// Send SOL demo — signs and sends a self-transfer of 0.001 SOL
-export async function sendSOL(toAddress?: string): Promise<string> {
-  const sdkInstance = getSDK();
-  if (!connectedAddress) throw new Error('Not connected');
-
-  const connection = new Connection('https://api.mainnet-beta.solana.com');
-  const { blockhash } = await connection.getLatestBlockhash();
-  const from = new PublicKey(connectedAddress);
-  const to = new PublicKey(toAddress ?? connectedAddress); // self-transfer as demo
-
-  const transaction = new Transaction({
-    recentBlockhash: blockhash,
-    feePayer: from,
-  }).add(
-    SystemProgram.transfer({
-      fromPubkey: from,
-      toPubkey: to,
-      lamports: 0.001 * LAMPORTS_PER_SOL,
-    })
-  );
-
-  const result = await sdkInstance.solana.signAndSendTransaction(transaction);
-  return result.hash;
+// Switch Solana network (mainnet, devnet)
+export async function switchNetwork(network: 'mainnet' | 'devnet'): Promise<void> {
+  try {
+    const sdkInstance = getSDK();
+    
+    if (!sdkInstance.isConnected()) {
+      throw new Error('Wallet not connected');
+    }
+    
+    console.log(`Switching to ${network}...`);
+    await sdkInstance.solana.switchNetwork(network);
+    console.log(`Switched to ${network}`);
+  } catch (error) {
+    console.error('Network switch failed:', error);
+    if (error instanceof Error) {
+      throw new Error(`Failed to switch network: ${error.message}`);
+    }
+    throw new Error('Failed to switch network');
+  }
 }
 
+// Check Solana connection status
+export function isSolanaConnected(): boolean {
+  try {
+    const sdkInstance = getSDK();
+    return sdkInstance.solana.isConnected();
+  } catch (error) {
+    return false;
+  }
+}

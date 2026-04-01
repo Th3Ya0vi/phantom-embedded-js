@@ -81,8 +81,14 @@ export async function copyToClipboard(text: string): Promise<void> {
 }
 
 // Generate Solana Explorer URL for an address
-export function getExplorerUrl(address: string, cluster: string = 'mainnet-beta'): string {
+export function getAddressExplorerUrl(address: string, cluster: string = 'mainnet-beta'): string {
   const clusterParam = cluster === 'mainnet-beta' ? '' : `?cluster=${cluster}`;
   return `https://explorer.solana.com/address/${address}${clusterParam}`;
+}
+
+// Generate Solana Explorer URL for a transaction
+export function getExplorerUrl(signature: string, cluster: string = 'mainnet-beta'): string {
+  const clusterParam = cluster === 'mainnet-beta' ? '' : `?cluster=${cluster}`;
+  return `https://explorer.solana.com/tx/${signature}${clusterParam}`;
 }
 

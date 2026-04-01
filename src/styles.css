@@ -424,6 +424,172 @@ footer {
 }
 
 /* ===============================================
+   Feature Sections (Sign Message, Send SOL)
+   =============================================== */
+.feature-section {
+  margin-top: var(--spacing-lg);
+}
+
+.feature-description {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  margin-bottom: var(--spacing-md);
+  line-height: 1.5;
+}
+
+/* Input Group */
+.input-group {
+  display: flex;
+  gap: var(--spacing-sm);
+  align-items: stretch;
+}
+
+.text-input {
+  flex: 1;
+  padding: var(--spacing-md);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  font-size: 0.95rem;
+  font-family: inherit;
+  background: var(--bg-page);
+  color: var(--text-primary);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.text-input:focus {
+  outline: none;
+  border-color: var(--phantom-purple);
+  box-shadow: 0 0 0 3px rgba(171, 159, 242, 0.2);
+}
+
+.text-input::placeholder {
+  color: var(--text-muted);
+}
+
+/* Action Button (smaller than primary) */
+.action-btn {
+  padding: var(--spacing-md) var(--spacing-lg);
+  background: var(--phantom-purple);
+  color: #FFFFFF;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  white-space: nowrap;
+}
+
+.action-btn:hover {
+  background: var(--phantom-purple-dark);
+  transform: translateY(-1px);
+}
+
+.action-btn:active {
+  transform: translateY(0);
+}
+
+.action-btn:focus {
+  outline: 2px solid var(--phantom-purple-light);
+  outline-offset: 2px;
+}
+
+.action-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* Send Form */
+.send-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.amount-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.amount-input {
+  max-width: 150px;
+}
+
+.amount-suffix {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+/* Result Box */
+.result-box {
+  margin-top: var(--spacing-md);
+  padding: var(--spacing-md);
+  background: var(--bg-page);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  animation: fadeIn 0.3s ease;
+}
+
+.result-content {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  flex-wrap: wrap;
+}
+
+.result-content.success {
+  border-left: 3px solid var(--success);
+  padding-left: var(--spacing-sm);
+}
+
+.result-label {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.result-value {
+  font-family: 'Monaco', 'Courier New', monospace;
+  font-size: 0.875rem;
+  color: var(--text-primary);
+  word-break: break-all;
+}
+
+.copy-signature-btn {
+  font-size: 0.75rem;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  min-width: auto;
+  min-height: auto;
+}
+
+.explorer-link {
+  color: var(--phantom-purple);
+  text-decoration: none;
+  font-size: 0.875rem;
+  font-weight: 500;
+  margin-left: auto;
+  transition: color var(--transition-fast);
+}
+
+.explorer-link:hover {
+  color: var(--phantom-purple-light);
+  text-decoration: underline;
+}
+
+/* Extension Button Style */
+.extension-btn {
+  border-style: dashed;
+}
+
+.extension-btn:hover {
+  border-color: var(--phantom-purple);
+  border-style: solid;
+}
+
+/* ===============================================
    Buttons
    =============================================== */
 button {
@@ -740,6 +906,34 @@ button {
     min-width: 36px;
     min-height: 36px;
     font-size: 1rem;
+  }
+
+  /* Feature sections on mobile */
+  .input-group {
+    flex-direction: column;
+  }
+
+  .action-btn {
+    width: 100%;
+  }
+
+  .amount-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .amount-input {
+    max-width: 100%;
+  }
+
+  .result-content {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .explorer-link {
+    margin-left: 0;
+    margin-top: var(--spacing-sm);
   }
 }
 
